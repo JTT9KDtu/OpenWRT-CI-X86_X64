@@ -26,7 +26,7 @@ EOF
 
 . /lib/functions.sh
 
-WIFI_KEY='password'
+WIFI_KEY='ljx2026@.'
 
 set_radio() {
 	local radio="$1"
