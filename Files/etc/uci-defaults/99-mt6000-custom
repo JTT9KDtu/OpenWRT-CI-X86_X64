@@ -22,11 +22,28 @@ uci -q batch <<-EOF
 EOF
 
 #---------- 网口 ----------
-# 默认只有 eth0 是 LAN、eth1 是 WAN
-# 这里把 eth2 eth3 也并进 LAN 桥，四口机就有三个 LAN 口
+# x86 没有专属的 board.d，走通用回退 99-default_network：
+#     ucidef_set_interface_lan 'eth0'
+#     [ -d /sys/class/net/eth1 ] && ucidef_set_interface_wan 'eth1'
+# WAN 只在 eth1 那一刻已就绪时才会被创建。虚拟机/网卡驱动加载慢时
+# 常常来不及，结果就是刷完没有 WAN 口。这里补一道兜底。
+WAN_PORT="eth1"
 EXTRA_LAN="eth2 eth3"
 
 . /lib/functions.sh
+
+#---------- 兜底：WAN 不存在就补建 ----------
+if [ -z "$(uci -q get network.wan)" ]; then
+	uci -q batch <<-EOF
+		set network.wan=interface
+		set network.wan.device='$WAN_PORT'
+		set network.wan.proto='dhcp'
+		set network.wan6=interface
+		set network.wan6.device='$WAN_PORT'
+		set network.wan6.proto='dhcpv6'
+		commit network
+	EOF
+fi
 
 LAN_BRIDGE=""
 
