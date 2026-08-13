@@ -9,8 +9,8 @@
 WMSXWD_BASE="${WMSXWD_URL:-http://172.233.138.55:5255}"
 WMSXWD_PATH="/wmsxwd1"
 PKG_NAME="wmsxwd-openwrt"
-ARCH_TAG="arm64"
-EXTRA_ARCH="aarch64_generic"
+ARCH_TAG="amd64"
+EXTRA_ARCH="x86_64"
 # 依赖：dnsmasq 故意不写（固件用的是 dnsmasq-full，写死会打架）
 WMSXWD_DEPENDS="+luci-base +luci-compat +luci-lua-runtime +nftables +kmod-nft-tproxy +kmod-nft-nat +ip-full"
 
