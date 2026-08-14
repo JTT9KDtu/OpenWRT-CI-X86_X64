@@ -21,6 +21,11 @@ uci -q batch <<-EOF
 	commit system
 EOF
 
+#---------- root 默认密码 ----------
+# 密码：admin（MD5-crypt 哈希，必须用单引号，双引号会被 shell 展开成空密码）
+# 换密码用：openssl passwd -1 你的新密码
+sed -i 's|^root:[^:]*:|root:$1$Op3nWrtX$l7bDHUU8J8QiMrMHTsaL51:|' /etc/shadow
+
 #---------- 网口 ----------
 # x86 没有专属的 board.d，走通用回退 99-default_network：
 #     ucidef_set_interface_lan 'eth0'
@@ -59,6 +64,8 @@ config_foreach find_lan_bridge device
 
 if [ -n "$LAN_BRIDGE" ]; then
 	for PORT in $EXTRA_LAN; do
+		# 端口不存在就跳过（虚拟机只给两张网卡时不会写入不存在的口）
+		[ -d "/sys/class/net/$PORT" ] || continue
 		# 已经在桥里就跳过，避免重复
 		if uci -q get "network.$LAN_BRIDGE.ports" | grep -qw "$PORT"; then
 			continue
