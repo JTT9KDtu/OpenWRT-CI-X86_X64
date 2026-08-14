@@ -47,7 +47,7 @@ WM_VER="$(echo "$WM_JSON" \
 [ -n "$WM_VER" ] || wm_die "$WMSXWD_PATH 下没找到版本号目录"
 wm_say "最新版本：$WM_VER"
 
-# ---------- 2. 在版本目录里挑 arm64 的包 ----------
+# ---------- 2. 在版本目录里挑 amd64 的包 ----------
 WM_SUB="$(wm_api_list "$WMSXWD_PATH/$WM_VER")" \
 	|| wm_die "无法列出 $WMSXWD_PATH/$WM_VER"
 
@@ -172,7 +172,7 @@ cp -a "$WM_RAWDIR"/. "$WM_PKGDIR/files/"
 	echo '#!/bin/sh'
 	echo '# 由 PRIVATE.sh 生成，首次启动 / 恢复出厂后自动执行一次'
 	echo ''
-	echo '# 坑1：包声明 aarch64_generic，设备是 aarch64_cortex-a53，补进去'
+	echo '# 坑1：包声明的架构与设备实际架构不一致，补进 /etc/apk/arch'
 	echo "grep -qx '$EXTRA_ARCH' /etc/apk/arch 2>/dev/null || echo '$EXTRA_ARCH' >> /etc/apk/arch"
 	echo ''
 	echo '# 坑2：清掉 LuCI 缓存，菜单立刻出来'
@@ -263,7 +263,7 @@ OC_FILES="../files"
 
 # ---- OpenClash 内核：master 分支稳定版 ----
 # 架构对照：X86_64 用 amd64-compatible（兼容所有 x86 CPU）
-#           aarch64 设备改成 arm64
+#           aarch64 设备改成 arm64（本仓库为 x86，勿动）
 OC_BRANCH="master"
 OC_TYPE="meta"
 OC_ARCH="amd64-compatible"
