@@ -252,3 +252,73 @@ rm -rf "$WM_TMP"
 wm_say "源码包已生成：package/$PKG_NAME （版本 $WM_VER）"
 echo "=================================================="
 echo ""
+
+echo ""
+echo "=================================================="
+echo " OpenClash 内核 + Geo 数据（编译时内置）"
+echo "=================================================="
+
+# files/ 在源码树根目录，当前工作目录是 wrt/package/
+OC_FILES="../files"
+
+# ---- OpenClash 内核：master 分支稳定版 ----
+# 架构对照：X86_64 用 amd64-compatible（兼容所有 x86 CPU）
+#           aarch64 设备改成 arm64
+OC_BRANCH="master"
+OC_TYPE="meta"
+OC_ARCH="amd64-compatible"
+OC_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/${OC_BRANCH}/${OC_TYPE}/clash-linux-${OC_ARCH}.tar.gz"
+
+oc_say() { echo "[openclash] $*"; }
+oc_warn() { echo "[openclash][警告] $*" >&2; }
+
+OC_TMP="$(mktemp -d)"
+if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
+	-o "$OC_TMP/core.tar.gz" "$OC_URL" && [ -s "$OC_TMP/core.tar.gz" ]; then
+
+	if tar -xzf "$OC_TMP/core.tar.gz" -C "$OC_TMP" && [ -f "$OC_TMP/clash" ]; then
+		mkdir -p "$OC_FILES/etc/openclash/core"
+		mv -f "$OC_TMP/clash" "$OC_FILES/etc/openclash/core/clash_meta"
+		chmod 755 "$OC_FILES/etc/openclash/core/clash_meta"
+		oc_say "内核已内置：/etc/openclash/core/clash_meta （${OC_BRANCH}/${OC_TYPE}/${OC_ARCH}，$(du -h "$OC_FILES/etc/openclash/core/clash_meta" | cut -f1)）"
+	else
+		oc_warn "内核解包失败，本次固件不含内核，刷机后需在面板手动下载"
+	fi
+else
+	oc_warn "内核下载失败，本次固件不含内核，刷机后需在面板手动下载"
+fi
+rm -rf "$OC_TMP"
+
+# ---- Geo 数据：每次编译抓上游最新 ----
+# 路径与 SSR+ / PassWall / OpenClash 官方脚本一致
+GEO_TMP="$(mktemp -d)"
+mkdir -p "$OC_FILES/usr/share/v2ray" "$OC_FILES/usr/share/shadowsocksr"
+
+geo_fetch() {
+	local name="$1" url="$2" dest="$3"
+	if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
+		-o "$GEO_TMP/$name" "$url" && [ -s "$GEO_TMP/$name" ]; then
+		mv -f "$GEO_TMP/$name" "$dest"
+		echo "[geo] $name -> ${dest#$OC_FILES}  （$(du -h "$dest" | cut -f1)）"
+	else
+		echo "[geo][警告] $name 下载失败，跳过" >&2
+	fi
+}
+
+# 用完整版 geoip.dat（PassWall 也依赖它，不能用 cn-only 那份覆盖）
+geo_fetch "geoip.dat" \
+	"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip.dat" \
+	"$OC_FILES/usr/share/v2ray/geoip.dat"
+
+geo_fetch "geosite.dat" \
+	"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" \
+	"$OC_FILES/usr/share/v2ray/geosite.dat"
+
+geo_fetch "Country.mmdb" \
+	"https://github.com/alecthw/mmdb_china_ip_list/releases/latest/download/Country-lite.mmdb" \
+	"$OC_FILES/usr/share/shadowsocksr/Country.mmdb"
+
+rm -rf "$GEO_TMP"
+
+echo "=================================================="
+echo ""
