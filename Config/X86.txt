@@ -213,8 +213,17 @@ CONFIG_PACKAGE_luci-theme-bootstrap=y
 #wmsxwd（由 Scripts/PRIVATE.sh 每次编译自动拉取最新版 amd64 包）
 CONFIG_PACKAGE_wmsxwd-openwrt=y
 
-#虚拟机镜像格式（ESXi / VMware Workstation 直接用，不必再从 img 转换）
-CONFIG_VMDK_IMAGES=y
+#镜像产物精简：只保留 squashfs-combined 与 squashfs-combined-efi 两个整盘 img.gz
+#不生成 vmdk（需要虚拟盘时用 img 自行转换）
+# CONFIG_VMDK_IMAGES is not set
+#不生成 rootfs 打包（targz-rootfs.tar.gz 与 rootfs.tar.gz 均由它产出，仅 LXC 容器场景才需要）
+# CONFIG_TARGET_ROOTFS_TARGZ is not set
+# CONFIG_TARGET_ROOTFS_CPIOGZ is not set
+# CONFIG_ISO_IMAGES is not set
+
+#两种引导都保留：combined 走 Legacy/BIOS，combined-efi 走 UEFI
+CONFIG_GRUB_IMAGES=y
+CONFIG_GRUB_EFI_IMAGES=y
 
 #只保留 squashfs，不生成 ext4 版本
 #squashfs-combined 带 overlay 分区，恢复出厂能回到编译时状态，与 wmsxwd 编进 rootfs 的设计配套
