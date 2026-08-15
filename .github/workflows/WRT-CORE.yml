@@ -269,6 +269,17 @@ jobs:
             done
 
             find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
+
+            #产物精简：只保留 combined / combined-efi 两个整盘镜像
+            #rootfs 包与 kernel.bin 由 target Makefile 硬产出，kconfig 关不掉，在此清理
+            find ./upload/ -type f \( \
+              -iname "*rootfs*.tar.gz" -o \
+              -iname "*rootfs*.img.gz" -o \
+              -iname "*.vmdk" -o \
+              -iname "*kernel*.bin" \) -exec rm -f {} +
+
+            echo "=== 最终上传文件 ==="
+            ls -lh ./upload/
           fi
 
       - name: Release Firmware
