@@ -4,9 +4,10 @@
 name: Auto-Clean
 
 on:
-  #自动清理：每天早上5点（北京时间）
+  #自动清理：每天上午9点（北京时间 UTC+8，即 UTC 01:00）
+  #必须晚于编译结束时间：编译 03:00 开始、耗时约 2.5~3 小时，06:00 前后出 Release
   schedule:
-    - cron: 0 21 * * *
+    - cron: 0 1 * * *
   #手动清理
   workflow_dispatch:
 
