@@ -1,2 +1,5 @@
 *.txt text eol=lf
 *.sh text eol=lf
+
+#uci-defaults 脚本没有扩展名，上面两条匹配不到，单独指定
+Files/** text eol=lf
