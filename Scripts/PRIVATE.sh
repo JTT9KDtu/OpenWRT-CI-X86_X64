@@ -339,6 +339,25 @@ geo_fetch "Country.mmdb" \
 	"https://github.com/alecthw/mmdb_china_ip_list/releases/latest/download/Country-lite.mmdb" \
 	"$OC_FILES/usr/share/shadowsocksr/Country.mmdb"
 
+# ---- OpenClash 自己的 Geo 路径 ----
+# 上面三份是给 PassWall / SSR+ 用的（/usr/share/...），
+# OpenClash 面板读的是 /etc/openclash/ 下的 GeoIP.dat / GeoSite.dat / Country.mmdb，
+# 文件格式相同，直接复制一份过去，刷完机面板即为“已存在”，不会再联网下载。
+mkdir -p "$OC_FILES/etc/openclash"
+
+oc_geo_copy() {
+	local src="$1" dst="$2"
+	if [ -s "$src" ]; then
+		cp -f "$src" "$dst" && echo "[geo] -> ${dst#$OC_FILES}  （$(du -h "$dst" | cut -f1)）"
+	else
+		echo "[geo][警告] $src 不存在，OpenClash 的 ${dst##*/} 未内置" >&2
+	fi
+}
+
+oc_geo_copy "$OC_FILES/usr/share/v2ray/geoip.dat"           "$OC_FILES/etc/openclash/GeoIP.dat"
+oc_geo_copy "$OC_FILES/usr/share/v2ray/geosite.dat"         "$OC_FILES/etc/openclash/GeoSite.dat"
+oc_geo_copy "$OC_FILES/usr/share/shadowsocksr/Country.mmdb" "$OC_FILES/etc/openclash/Country.mmdb"
+
 rm -rf "$GEO_TMP"
 
 echo "=================================================="
