@@ -261,33 +261,54 @@ echo "=================================================="
 # files/ 在源码树根目录，当前工作目录是 wrt/package/
 OC_FILES="../files"
 
-# ---- OpenClash 内核：master 分支稳定版 ----
-# 架构对照：X86_64 用 amd64-compatible（兼容所有 x86 CPU）
-#           aarch64 设备改成 arm64（本仓库为 x86，勿动）
-OC_BRANCH="master"
-OC_TYPE="meta"
-OC_ARCH="amd64-compatible"
-OC_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/${OC_BRANCH}/${OC_TYPE}/clash-linux-${OC_ARCH}.tar.gz"
-
-oc_say() { echo "[openclash] $*"; }
+oc_say()  { echo "[openclash] $*"; }
 oc_warn() { echo "[openclash][警告] $*" >&2; }
 
-OC_TMP="$(mktemp -d)"
-if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
-	-o "$OC_TMP/core.tar.gz" "$OC_URL" && [ -s "$OC_TMP/core.tar.gz" ]; then
+# ---- 按平台选内核架构 ----
+# WRT_TARGET 由 WRT-CORE.yml 从 Config/*.txt 的第一条 CONFIG_TARGET_xxx=y 取得
+#   x86        -> amd64-compatible
+#   mediatek   -> arm64（MT7986A / MT7981 均为 Cortex-A53 64 位）
+#   qualcommax -> arm64
+# 取不到就跳过，绝不猜——下错架构的二进制在设备上根本跑不起来，
+# 而且 OpenClash 只会报“内核不可用”，很难定位。
+# 需要手动指定时，在 workflow 里设 OC_ARCH_FORCE 环境变量即可覆盖。
+case "${OC_ARCH_FORCE:-${WRT_TARGET:-}}" in
+	amd64-compatible|arm64|armv7|armv5|mipsle-softfloat|mips-softfloat)
+		OC_ARCH="${OC_ARCH_FORCE}" ;;
+	x86)
+		OC_ARCH="amd64-compatible" ;;
+	mediatek|qualcommax|rockchip|sunxi|armsr|bcm27xx)
+		OC_ARCH="arm64" ;;
+	*)
+		OC_ARCH="" ;;
+esac
 
-	if tar -xzf "$OC_TMP/core.tar.gz" -C "$OC_TMP" && [ -f "$OC_TMP/clash" ]; then
-		mkdir -p "$OC_FILES/etc/openclash/core"
-		mv -f "$OC_TMP/clash" "$OC_FILES/etc/openclash/core/clash_meta"
-		chmod 755 "$OC_FILES/etc/openclash/core/clash_meta"
-		oc_say "内核已内置：/etc/openclash/core/clash_meta （${OC_BRANCH}/${OC_TYPE}/${OC_ARCH}，$(du -h "$OC_FILES/etc/openclash/core/clash_meta" | cut -f1)）"
-	else
-		oc_warn "内核解包失败，本次固件不含内核，刷机后需在面板手动下载"
-	fi
+OC_BRANCH="master"
+OC_TYPE="meta"
+
+if [ -z "$OC_ARCH" ]; then
+	oc_warn "无法从 WRT_TARGET='${WRT_TARGET:-未设置}' 判断内核架构，跳过内置，刷机后需在面板手动下载"
 else
-	oc_warn "内核下载失败，本次固件不含内核，刷机后需在面板手动下载"
+	OC_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/${OC_BRANCH}/${OC_TYPE}/clash-linux-${OC_ARCH}.tar.gz"
+	oc_say "平台 ${WRT_TARGET:-?} -> 内核架构 ${OC_ARCH}"
+
+	OC_TMP="$(mktemp -d)"
+	if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
+		-o "$OC_TMP/core.tar.gz" "$OC_URL" && [ -s "$OC_TMP/core.tar.gz" ]; then
+
+		if tar -xzf "$OC_TMP/core.tar.gz" -C "$OC_TMP" && [ -f "$OC_TMP/clash" ]; then
+			mkdir -p "$OC_FILES/etc/openclash/core"
+			mv -f "$OC_TMP/clash" "$OC_FILES/etc/openclash/core/clash_meta"
+			chmod 755 "$OC_FILES/etc/openclash/core/clash_meta"
+			oc_say "内核已内置：/etc/openclash/core/clash_meta （${OC_BRANCH}/${OC_TYPE}/${OC_ARCH}，$(du -h "$OC_FILES/etc/openclash/core/clash_meta" | cut -f1)）"
+		else
+			oc_warn "内核解包失败，本次固件不含内核，刷机后需在面板手动下载"
+		fi
+	else
+		oc_warn "内核下载失败，本次固件不含内核，刷机后需在面板手动下载"
+	fi
+	rm -rf "$OC_TMP"
 fi
-rm -rf "$OC_TMP"
 
 # ---- Geo 数据：每次编译抓上游最新 ----
 # 路径与 SSR+ / PassWall / OpenClash 官方脚本一致
