@@ -25,6 +25,13 @@ on:
 #CI权限
 permissions: write-all
 
+#同一时间只允许一个编译任务：
+#手动触发与定时任务撞车时，两个 job 会同时读写同一个缓存键，互相把对方的缓存删掉，
+#下次就退回无缓存编译（5 小时起）。排队不取消，保证手动触发不会被定时任务顶掉。
+concurrency:
+  group: ${{github.workflow}}
+  cancel-in-progress: false
+
 #CI任务
 jobs:
   config:
