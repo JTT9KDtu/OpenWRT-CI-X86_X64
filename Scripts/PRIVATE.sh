@@ -362,3 +362,74 @@ rm -rf "$GEO_TMP"
 
 echo "=================================================="
 echo ""
+
+echo ""
+echo "=================================================="
+echo " Mihomo 内核（覆盖为上游最新版）"
+echo "=================================================="
+
+# 背景：
+#   SSR+ 的 INCLUDE_Mihomo 会安装 mihomo 包 -> /usr/libexec/mihomo，
+#   并通过 alternatives 机制占住 /usr/bin/mihomo（成品里是软链）。
+#   该包的版本号由 fw876/helloworld feed 的 Makefile 写死，
+#   通常比 MetaCubeX 上游滞后 1~7 天。
+#
+# 做法：
+#   files/ 目录是在所有软件包安装「之后」才拷进 rootfs 的，同名文件会被覆盖，
+#   因此只需把最新二进制写到 files/usr/libexec/mihomo，
+#   /usr/bin/mihomo 那个 alternatives 软链原样保留，无需改动。
+#
+# 注意：
+#   本段与 CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Mihomo=y 绑定。
+#   若将来关闭该选项（把 /usr/bin/mihomo 让给 wmsxwd），本段应一并移除。
+
+case "${MH_ARCH_FORCE:-${WRT_TARGET:-}}" in
+	amd64-compatible|amd64|arm64|armv7|armv5)
+		MH_ARCH="${MH_ARCH_FORCE}" ;;
+	x86)
+		MH_ARCH="amd64-compatible" ;;
+	mediatek|qualcommax|rockchip|sunxi|armsr|bcm27xx)
+		MH_ARCH="arm64" ;;
+	*)
+		MH_ARCH="" ;;
+esac
+
+if [ -z "$MH_ARCH" ]; then
+	echo "[mihomo][警告] 无法从 WRT_TARGET='${WRT_TARGET:-未设置}' 判断架构，跳过覆盖，沿用 feed 自带版本" >&2
+else
+	MH_VER="$(curl -fsSL --connect-timeout 20 --max-time 60 --retry 3 --retry-delay 3 \
+		${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
+		-H "Accept: application/vnd.github+json" \
+		"https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" \
+		2>/dev/null | jq -r '.tag_name // empty')"
+
+	if [ -z "$MH_VER" ]; then
+		echo "[mihomo][警告] 取不到上游最新版本号，跳过覆盖，沿用 feed 自带版本" >&2
+	else
+		MH_FILE="mihomo-linux-${MH_ARCH}-${MH_VER}.gz"
+		MH_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MH_VER}/${MH_FILE}"
+		MH_TMP="$(mktemp -d)"
+
+		echo "[mihomo] 平台 ${WRT_TARGET:-?} -> 架构 ${MH_ARCH}"
+		echo "[mihomo] 上游最新：${MH_VER}"
+		echo "[mihomo] 发布包名：${MH_FILE}"
+
+		if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
+			-o "$MH_TMP/mihomo.gz" "$MH_URL" && [ -s "$MH_TMP/mihomo.gz" ] \
+			&& gzip -dc "$MH_TMP/mihomo.gz" > "$MH_TMP/mihomo" && [ -s "$MH_TMP/mihomo" ]; then
+
+			mkdir -p "$OC_FILES/usr/libexec"
+			mv -f "$MH_TMP/mihomo" "$OC_FILES/usr/libexec/mihomo"
+			chmod 755 "$OC_FILES/usr/libexec/mihomo"
+			echo "[mihomo] 已覆盖：/usr/libexec/mihomo （${MH_VER}，$(du -h "$OC_FILES/usr/libexec/mihomo" | cut -f1)）"
+			echo "[mihomo] 文件类型：$(file -b "$OC_FILES/usr/libexec/mihomo" 2>/dev/null || echo '未知')"
+		else
+			echo "[mihomo][警告] 下载或解压失败，本次沿用 feed 自带版本" >&2
+		fi
+
+		rm -rf "$MH_TMP"
+	fi
+fi
+
+echo "=================================================="
+echo ""
