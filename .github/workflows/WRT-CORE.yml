@@ -207,6 +207,7 @@ jobs:
             find ./wrt/files/etc/uci-defaults/ -type f -exec dos2unix {} \; 2>/dev/null || true
             find ./wrt/files/etc/uci-defaults/ -type f -exec chmod +x {} \; 2>/dev/null || true
             chmod 755 ./wrt/files/etc/openclash/core/clash_meta 2>/dev/null || true
+            chmod 755 ./wrt/files/usr/libexec/mihomo 2>/dev/null || true
 
             echo "===== files ====="
             find ./wrt/files/ -type f
