@@ -92,6 +92,7 @@ jobs:
           echo "WRT_MARK=${GITHUB_REPOSITORY%%/*}" >> $GITHUB_ENV
           echo "WRT_INFO=${WRT_SOURCE%%/*}" >> $GITHUB_ENV
           echo "WRT_TARGET=$(grep -m 1 -oP '^CONFIG_TARGET_\K[\w]+(?=\=y)' ./Config/$WRT_CONFIG.txt)" >> $GITHUB_ENV
+          echo "WRT_WIFI=wifi-yes" >> $GITHUB_ENV
           echo "WRT_KVER=none" >> $GITHUB_ENV
           echo "WRT_LIST=none" >> $GITHUB_ENV
 
@@ -138,15 +139,6 @@ jobs:
             echo "caches missed!"
           fi
 
-          if ${{steps.check-cache.outputs.cache-hit != 'true'}}; then
-            CACHE_LIST=$(gh cache list --key "$WRT_CONFIG-$WRT_INFO" | cut -f 1)
-            for CACHE_KEY in $CACHE_LIST; do
-              gh cache delete $CACHE_KEY
-            done
-
-            echo "caches cleanup done!"
-          fi
-
       - name: Update Feeds
         run: |
           cd ./wrt/
@@ -176,7 +168,8 @@ jobs:
           rm -rf ./feeds/packages/net/mosdns
           rm -rf ./feeds/packages/net/v2ray-geodata
 
-          # 这四个 ImmortalWrt 自带的版本比 passwall/helloworld 的旧，删掉让新版顶上
+          # ImmortalWrt 自带 feed 里这四个包版本偏旧，且排在自定义 feeds 前面会赢
+          # 删掉才能用上 passwall_packages 里的新版
           rm -rf ./feeds/packages/net/xray-core
           rm -rf ./feeds/packages/net/sing-box
           rm -rf ./feeds/packages/net/hysteria
@@ -207,7 +200,6 @@ jobs:
             find ./wrt/files/etc/uci-defaults/ -type f -exec dos2unix {} \; 2>/dev/null || true
             find ./wrt/files/etc/uci-defaults/ -type f -exec chmod +x {} \; 2>/dev/null || true
             chmod 755 ./wrt/files/etc/openclash/core/clash_meta 2>/dev/null || true
-            chmod 755 ./wrt/files/usr/libexec/mihomo 2>/dev/null || true
 
             echo "===== files ====="
             find ./wrt/files/ -type f
@@ -238,6 +230,16 @@ jobs:
 
           make -j$(nproc) || make -j$(nproc) V=s || make -j1 V=s
 
+      - name: Cleanup Caches
+        if: success() && env.WRT_TEST != 'true' && steps.check-cache.outputs.cache-hit != 'true'
+        run: |
+          CACHE_LIST=$(gh cache list --key "$WRT_CONFIG-$WRT_INFO" | cut -f 1)
+          for CACHE_KEY in $CACHE_LIST; do
+            gh cache delete $CACHE_KEY
+          done
+
+          echo "caches cleanup done!"
+
       - name: Machine Information
         run: |
           cd ./wrt/
@@ -252,12 +254,12 @@ jobs:
 
       - name: Package Firmware
         run: |
-          cd ./wrt/ && mkdir -p ./upload/
+          cd ./wrt/ && mkdir ./upload/
 
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
 
           if [[ $WRT_TEST != 'true' ]]; then
-            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \; | sort -u | head -n1)" >> $GITHUB_ENV
+            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
 
             find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
@@ -265,22 +267,11 @@ jobs:
             for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
               EXT=$(basename $FILE | cut -d '.' -f 2-)
               NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($WRT_TARGET\).*")
-              NEW_FILE="$NAME"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE"."$EXT"
+              NEW_FILE="$NAME"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_WIFI"-"$WRT_DATE"."$EXT"
               mv -f $FILE ./upload/$NEW_FILE
             done
 
             find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
-
-            #产物精简：只保留 combined / combined-efi 两个整盘镜像
-            #rootfs 包与 kernel.bin 由 target Makefile 硬产出，kconfig 关不掉，在此清理
-            find ./upload/ -type f \( \
-              -iname "*rootfs*.tar.gz" -o \
-              -iname "*rootfs*.img.gz" -o \
-              -iname "*.vmdk" -o \
-              -iname "*kernel*.bin" \) -exec rm -f {} +
-
-            echo "=== 最终上传文件 ==="
-            ls -lh ./upload/
           fi
 
       - name: Release Firmware
@@ -300,6 +291,9 @@ jobs:
 
             登录地址：${{env.WRT_IP}}
             登录密码：${{env.WRT_PW}}
+
+            WIFI名称：${{env.WRT_SSID}}
+            WIFI密码：${{env.WRT_WORD}}
 
             内核版本：${{env.WRT_KVER}}
             插件列表：${{env.WRT_LIST}}
