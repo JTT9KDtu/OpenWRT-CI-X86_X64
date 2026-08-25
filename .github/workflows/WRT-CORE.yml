@@ -149,8 +149,6 @@ jobs:
           src-git mosdns https://github.com/sbwml/luci-app-mosdns.git;v5
           src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
           src-git passwall https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
-          src-git helloworld https://github.com/fw876/helloworld.git
-          src-git openclash https://github.com/vernesong/OpenClash.git
           src-git istore https://github.com/linkease/istore;main
           EOF
 
@@ -162,7 +160,6 @@ jobs:
 
           # 删除源码树自带的同名包，让自定义feeds里的版本生效
           rm -rf ./feeds/luci/applications/luci-app-argon-config
-          rm -rf ./feeds/luci/applications/luci-app-openclash
           rm -rf ./feeds/luci/applications/luci-app-passwall
           rm -rf ./feeds/luci/themes/luci-theme-argon
           rm -rf ./feeds/packages/net/mosdns
@@ -196,10 +193,9 @@ jobs:
             mkdir -p ./wrt/files
             cp -rf $GITHUB_WORKSPACE/Files/. ./wrt/files/
             # 只对 uci-defaults 做换行符转换
-            # files/ 里还有 OpenClash 内核和 Geo 数据等二进制，dos2unix 会损坏它们
+            # files/ 里还有 Geo 数据等二进制，dos2unix 会损坏它们
             find ./wrt/files/etc/uci-defaults/ -type f -exec dos2unix {} \; 2>/dev/null || true
             find ./wrt/files/etc/uci-defaults/ -type f -exec chmod +x {} \; 2>/dev/null || true
-            chmod 755 ./wrt/files/etc/openclash/core/clash_meta 2>/dev/null || true
 
             echo "===== files ====="
             find ./wrt/files/ -type f
