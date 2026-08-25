@@ -255,181 +255,48 @@ echo ""
 
 echo ""
 echo "=================================================="
-echo " OpenClash 内核 + Geo 数据（编译时内置）"
+echo " Geo 数据（PassWall 用，编译时内置）"
 echo "=================================================="
 
 # files/ 在源码树根目录，当前工作目录是 wrt/package/
-OC_FILES="../files"
+WRT_FILES="../files"
 
-oc_say()  { echo "[openclash] $*"; }
-oc_warn() { echo "[openclash][警告] $*" >&2; }
-
-# ---- 按平台选内核架构 ----
-# WRT_TARGET 由 WRT-CORE.yml 从 Config/*.txt 的第一条 CONFIG_TARGET_xxx=y 取得
-#   x86        -> amd64-compatible
-#   mediatek   -> arm64（MT7986A / MT7981 均为 Cortex-A53 64 位）
-#   qualcommax -> arm64
-# 取不到就跳过，绝不猜——下错架构的二进制在设备上根本跑不起来，
-# 而且 OpenClash 只会报“内核不可用”，很难定位。
-# 需要手动指定时，在 workflow 里设 OC_ARCH_FORCE 环境变量即可覆盖。
-case "${OC_ARCH_FORCE:-${WRT_TARGET:-}}" in
-	amd64-compatible|arm64|armv7|armv5|mipsle-softfloat|mips-softfloat)
-		OC_ARCH="${OC_ARCH_FORCE}" ;;
-	x86)
-		OC_ARCH="amd64-compatible" ;;
-	mediatek|qualcommax|rockchip|sunxi|armsr|bcm27xx)
-		OC_ARCH="arm64" ;;
-	*)
-		OC_ARCH="" ;;
-esac
-
-OC_BRANCH="master"
-OC_TYPE="meta"
-
-if [ -z "$OC_ARCH" ]; then
-	oc_warn "无法从 WRT_TARGET='${WRT_TARGET:-未设置}' 判断内核架构，跳过内置，刷机后需在面板手动下载"
-else
-	OC_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/${OC_BRANCH}/${OC_TYPE}/clash-linux-${OC_ARCH}.tar.gz"
-	oc_say "平台 ${WRT_TARGET:-?} -> 内核架构 ${OC_ARCH}"
-
-	OC_TMP="$(mktemp -d)"
-	if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
-		-o "$OC_TMP/core.tar.gz" "$OC_URL" && [ -s "$OC_TMP/core.tar.gz" ]; then
-
-		if tar -xzf "$OC_TMP/core.tar.gz" -C "$OC_TMP" && [ -f "$OC_TMP/clash" ]; then
-			mkdir -p "$OC_FILES/etc/openclash/core"
-			mv -f "$OC_TMP/clash" "$OC_FILES/etc/openclash/core/clash_meta"
-			chmod 755 "$OC_FILES/etc/openclash/core/clash_meta"
-			oc_say "内核已内置：/etc/openclash/core/clash_meta （${OC_BRANCH}/${OC_TYPE}/${OC_ARCH}，$(du -h "$OC_FILES/etc/openclash/core/clash_meta" | cut -f1)）"
-		else
-			oc_warn "内核解包失败，本次固件不含内核，刷机后需在面板手动下载"
-		fi
-	else
-		oc_warn "内核下载失败，本次固件不含内核，刷机后需在面板手动下载"
-	fi
-	rm -rf "$OC_TMP"
-fi
-
-# ---- Geo 数据：每次编译抓上游最新 ----
-# 路径与 SSR+ / PassWall / OpenClash 官方脚本一致
 GEO_TMP="$(mktemp -d)"
-mkdir -p "$OC_FILES/usr/share/v2ray" "$OC_FILES/usr/share/shadowsocksr"
+mkdir -p "$WRT_FILES/usr/share/v2ray"
 
 geo_fetch() {
 	local name="$1" url="$2" dest="$3"
 	if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
 		-o "$GEO_TMP/$name" "$url" && [ -s "$GEO_TMP/$name" ]; then
 		mv -f "$GEO_TMP/$name" "$dest"
-		echo "[geo] $name -> ${dest#$OC_FILES}  （$(du -h "$dest" | cut -f1)）"
+		echo "[geo] $name -> ${dest#$WRT_FILES}  （$(du -h "$dest" | cut -f1)）"
 	else
 		echo "[geo][警告] $name 下载失败，跳过" >&2
 	fi
 }
 
-# 用完整版 geoip.dat（PassWall 也依赖它，不能用 cn-only 那份覆盖）
+# 用完整版 geoip.dat（PassWall 依赖，不能用 cn-only 那份覆盖）
 geo_fetch "geoip.dat" \
 	"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip.dat" \
-	"$OC_FILES/usr/share/v2ray/geoip.dat"
+	"$WRT_FILES/usr/share/v2ray/geoip.dat"
 
 geo_fetch "geosite.dat" \
 	"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" \
-	"$OC_FILES/usr/share/v2ray/geosite.dat"
-
-geo_fetch "Country.mmdb" \
-	"https://github.com/alecthw/mmdb_china_ip_list/releases/latest/download/Country-lite.mmdb" \
-	"$OC_FILES/usr/share/shadowsocksr/Country.mmdb"
-
-# ---- OpenClash 自己的 Geo 路径 ----
-# 上面三份是给 PassWall / SSR+ 用的（/usr/share/...），
-# OpenClash 面板读的是 /etc/openclash/ 下的 GeoIP.dat / GeoSite.dat / Country.mmdb，
-# 文件格式相同，直接复制一份过去，刷完机面板即为“已存在”，不会再联网下载。
-mkdir -p "$OC_FILES/etc/openclash"
-
-oc_geo_copy() {
-	local src="$1" dst="$2"
-	if [ -s "$src" ]; then
-		cp -f "$src" "$dst" && echo "[geo] -> ${dst#$OC_FILES}  （$(du -h "$dst" | cut -f1)）"
-	else
-		echo "[geo][警告] $src 不存在，OpenClash 的 ${dst##*/} 未内置" >&2
-	fi
-}
-
-oc_geo_copy "$OC_FILES/usr/share/v2ray/geoip.dat"           "$OC_FILES/etc/openclash/GeoIP.dat"
-oc_geo_copy "$OC_FILES/usr/share/v2ray/geosite.dat"         "$OC_FILES/etc/openclash/GeoSite.dat"
-oc_geo_copy "$OC_FILES/usr/share/shadowsocksr/Country.mmdb" "$OC_FILES/etc/openclash/Country.mmdb"
+	"$WRT_FILES/usr/share/v2ray/geosite.dat"
 
 rm -rf "$GEO_TMP"
 
 echo "=================================================="
 echo ""
 
-echo ""
-echo "=================================================="
-echo " Mihomo 内核（覆盖为上游最新版）"
-echo "=================================================="
-
-# 背景：
-#   SSR+ 的 INCLUDE_Mihomo 会安装 mihomo 包 -> /usr/libexec/mihomo，
-#   并通过 alternatives 机制占住 /usr/bin/mihomo（成品里是软链）。
-#   该包的版本号由 fw876/helloworld feed 的 Makefile 写死，
-#   通常比 MetaCubeX 上游滞后 1~7 天。
+# ==================================================================
+# 以下两段已于 2026-08-25 移除，请勿恢复：
 #
-# 做法：
-#   files/ 目录是在所有软件包安装「之后」才拷进 rootfs 的，同名文件会被覆盖，
-#   因此只需把最新二进制写到 files/usr/libexec/mihomo，
-#   /usr/bin/mihomo 那个 alternatives 软链原样保留，无需改动。
+# 1) OpenClash 内核（clash_meta）+ /etc/openclash 下的 Geo 数据
+#    本机型已不编译 luci-app-openclash，内置内核纯属占体积。
 #
-# 注意：
-#   本段与 CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Mihomo=y 绑定。
-#   若将来关闭该选项（把 /usr/bin/mihomo 让给 wmsxwd），本段应一并移除。
-
-case "${MH_ARCH_FORCE:-${WRT_TARGET:-}}" in
-	amd64-compatible|amd64|arm64|armv7|armv5)
-		MH_ARCH="${MH_ARCH_FORCE}" ;;
-	x86)
-		MH_ARCH="amd64-compatible" ;;
-	mediatek|qualcommax|rockchip|sunxi|armsr|bcm27xx)
-		MH_ARCH="arm64" ;;
-	*)
-		MH_ARCH="" ;;
-esac
-
-if [ -z "$MH_ARCH" ]; then
-	echo "[mihomo][警告] 无法从 WRT_TARGET='${WRT_TARGET:-未设置}' 判断架构，跳过覆盖，沿用 feed 自带版本" >&2
-else
-	MH_VER="$(curl -fsSL --connect-timeout 20 --max-time 60 --retry 3 --retry-delay 3 \
-		${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
-		-H "Accept: application/vnd.github+json" \
-		"https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" \
-		2>/dev/null | jq -r '.tag_name // empty')"
-
-	if [ -z "$MH_VER" ]; then
-		echo "[mihomo][警告] 取不到上游最新版本号，跳过覆盖，沿用 feed 自带版本" >&2
-	else
-		MH_FILE="mihomo-linux-${MH_ARCH}-${MH_VER}.gz"
-		MH_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MH_VER}/${MH_FILE}"
-		MH_TMP="$(mktemp -d)"
-
-		echo "[mihomo] 平台 ${WRT_TARGET:-?} -> 架构 ${MH_ARCH}"
-		echo "[mihomo] 上游最新：${MH_VER}"
-		echo "[mihomo] 发布包名：${MH_FILE}"
-
-		if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
-			-o "$MH_TMP/mihomo.gz" "$MH_URL" && [ -s "$MH_TMP/mihomo.gz" ] \
-			&& gzip -dc "$MH_TMP/mihomo.gz" > "$MH_TMP/mihomo" && [ -s "$MH_TMP/mihomo" ]; then
-
-			mkdir -p "$OC_FILES/usr/libexec"
-			mv -f "$MH_TMP/mihomo" "$OC_FILES/usr/libexec/mihomo"
-			chmod 755 "$OC_FILES/usr/libexec/mihomo"
-			echo "[mihomo] 已覆盖：/usr/libexec/mihomo （${MH_VER}，$(du -h "$OC_FILES/usr/libexec/mihomo" | cut -f1)）"
-			echo "[mihomo] 文件类型：$(file -b "$OC_FILES/usr/libexec/mihomo" 2>/dev/null || echo '未知')"
-		else
-			echo "[mihomo][警告] 下载或解压失败，本次沿用 feed 自带版本" >&2
-		fi
-
-		rm -rf "$MH_TMP"
-	fi
-fi
-
-echo "=================================================="
-echo ""
+# 2) Mihomo 内核覆盖（从 MetaCubeX 抓最新版写入 /usr/libexec/mihomo）
+#    实测会顶掉 wmsxwd 自带的 mihomo，导致机场插件运行异常。
+#    mihomo 内核一律以 wmsxwd 包内自带的版本为准，不再单独拉取。
+#    本配置中 PassWall / mosdns 均不需要 mihomo。
+# ==================================================================
