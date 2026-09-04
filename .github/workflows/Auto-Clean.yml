@@ -1,52 +1,67 @@
-# SPDX-License-Identifier: MIT
+- name: Clean old releases
+  env:
+    GH_TOKEN: ${{ github.token }}
+  run: |
+    KEEP_COUNT=10
+    KEEP_DAYS=10
 
-#固件保留最新的10个，多余的自动删除
-name: Auto-Clean
+    echo "======================================"
+    echo "Release 清理策略"
+    echo "最近 $KEEP_DAYS 天全部保留"
+    echo "最近 $KEEP_COUNT 个 Release 永久保底"
+    echo "======================================"
 
-on:
-  #自动清理：每天上午9点（北京时间 UTC+8，即 UTC 01:00）
-  #必须晚于编译结束时间：编译 03:00 开始、耗时约 2.5~3 小时，06:00 前后出 Release
-  schedule:
-    - cron: 0 1 * * *
-  #手动清理
-  workflow_dispatch:
+    CUTOFF=$(date -u -d "$KEEP_DAYS days ago" +%s)
 
-permissions: write-all
+    # 获取最新 Release ID
+    LATEST_ID=$(gh api \
+      "repos/${GITHUB_REPOSITORY}/releases/latest" \
+      --jq '.id' 2>/dev/null || echo "")
 
-jobs:
-  auto_clean:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Keep only the newest releases
-        env:
-          GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        run: |
-          KEEP_NUM=10
+    # GitHub API 默认按最新到最旧返回
+    INDEX=0
 
-          RELEASES=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300 --json tagName,createdAt)
-          TOTAL=$(echo "$RELEASES" | jq 'length')
+    gh api \
+      --paginate \
+      "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+      --jq '.[] | [.id, .tag_name, (.published_at // .created_at)] | @tsv' |
+    while IFS=$'\t' read -r RELEASE_ID TAG_NAME RELEASE_DATE; do
 
-          echo "当前固件总数：$TOTAL"
-          echo "保留最新的：$KEEP_NUM 个"
-          echo "=================================="
+      INDEX=$((INDEX + 1))
+      RELEASE_TIME=$(date -u -d "$RELEASE_DATE" +%s)
 
-          if [ "$TOTAL" -le "$KEEP_NUM" ]; then
-            echo "数量未超过 $KEEP_NUM 个，无需清理。"
-            exit 0
-          fi
+      echo "--------------------------------------"
+      echo "Release #$INDEX"
+      echo "Tag:  $TAG_NAME"
+      echo "Date: $RELEASE_DATE"
 
-          echo "【保留】"
-          echo "$RELEASES" | jq -r --argjson n "$KEEP_NUM" \
-            'sort_by(.createdAt) | reverse | .[:$n] | .[] | "  " + .tagName'
+      # 第一层保险：Latest 永远不删
+      if [ "$RELEASE_ID" = "$LATEST_ID" ]; then
+        echo "保留：Latest Release"
+        continue
+      fi
 
-          echo "【删除】"
-          echo "$RELEASES" | jq -r --argjson n "$KEEP_NUM" \
-            'sort_by(.createdAt) | reverse | .[$n:] | .[].tagName' \
-            | while read -r TAG; do
-                [ -n "$TAG" ] || continue
-                echo "  $TAG"
-                gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-              done
+      # 第二层保险：最近10个永远不删
+      if [ "$INDEX" -le "$KEEP_COUNT" ]; then
+        echo "保留：属于最近 $KEEP_COUNT 个 Release"
+        continue
+      fi
 
-          echo "=================================="
-          echo "清理完成！"
+      # 第三层保险：10天以内不删
+      if [ "$RELEASE_TIME" -ge "$CUTOFF" ]; then
+        echo "保留：发布时间未超过 $KEEP_DAYS 天"
+        continue
+      fi
+
+      echo "删除：超过 $KEEP_DAYS 天，并且不属于最近 $KEEP_COUNT 个版本"
+
+      gh api \
+        --method DELETE \
+        "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}"
+
+      gh api \
+        --method DELETE \
+        "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" \
+        || true
+
+    done
