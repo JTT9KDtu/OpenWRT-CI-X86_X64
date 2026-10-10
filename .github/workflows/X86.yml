@@ -41,7 +41,7 @@ jobs:
     with:
       #编译配置（对应 Config/X86.txt）
       WRT_CONFIG: X86
-      #默认主题（argon 或 aurora，二选一）
+      #默认主题（argon；Aurora 已移除）
       WRT_THEME: argon
       #默认主机名
       WRT_NAME: X86_89
