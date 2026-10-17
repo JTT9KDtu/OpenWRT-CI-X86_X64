@@ -300,3 +300,35 @@ echo ""
 #    mihomo 内核一律以 wmsxwd 包内自带的版本为准，不再单独拉取。
 #    本配置中 PassWall / mosdns 均不需要 mihomo。
 # ==================================================================
+
+echo ""
+echo "=================================================="
+echo " OpenClash 内核 + Geo（编译时内置，恢复出厂不丢）"
+echo "=================================================="
+
+# OpenClash 自己的 Meta 内核，放 /etc/openclash/core/clash_meta
+# 不占 /usr/bin/mihomo，不影响 wmsxwd
+OC_ARCH="amd64-compatible"
+OC_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/master/meta/clash-linux-${OC_ARCH}.tar.gz"
+OC_TMP="$(mktemp -d)"
+if curl -fsSL --connect-timeout 20 --max-time 600 --retry 3 --retry-delay 5 \
+	-o "$OC_TMP/core.tar.gz" "$OC_URL" && [ -s "$OC_TMP/core.tar.gz" ] && \
+	tar -xzf "$OC_TMP/core.tar.gz" -C "$OC_TMP" && [ -f "$OC_TMP/clash" ]; then
+	mkdir -p "$WRT_FILES/etc/openclash/core"
+	mv -f "$OC_TMP/clash" "$WRT_FILES/etc/openclash/core/clash_meta"
+	chmod 755 "$WRT_FILES/etc/openclash/core/clash_meta"
+	echo "[openclash] 内核已内置：$(du -h "$WRT_FILES/etc/openclash/core/clash_meta" | cut -f1)"
+else
+	echo "[openclash][警告] 内核下载失败，刷机后需在面板手动下载" >&2
+fi
+rm -rf "$OC_TMP"
+
+# OpenClash 包自带 Country.mmdb / GeoSite.dat，唯独缺 GeoIP.dat，从 PassWall 那份复制
+mkdir -p "$WRT_FILES/etc/openclash"
+[ -s "$WRT_FILES/usr/share/v2ray/geoip.dat" ] && \
+	cp -f "$WRT_FILES/usr/share/v2ray/geoip.dat" "$WRT_FILES/etc/openclash/GeoIP.dat"
+[ -s "$WRT_FILES/usr/share/v2ray/geosite.dat" ] && \
+	cp -f "$WRT_FILES/usr/share/v2ray/geosite.dat" "$WRT_FILES/etc/openclash/GeoSite.dat"
+
+echo "=================================================="
+echo ""
